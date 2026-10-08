@@ -4,7 +4,7 @@
 # "Removes oocap binary, package installations, and cache."
 #
 # Usage:
-#   curl -fsSL https://openooda-toocap.github.io/oocap/uninstall.sh | bash
+#   curl -fsSL https://openooda-tools.github.io/oocap/uninstall.sh | bash
 #   or: ./uninstall.sh [options]
 #
 # Options:

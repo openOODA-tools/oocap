@@ -1,0 +1,22 @@
+// # oocap Render Module Anchor
+//
+// Logline: Anchors capability terminal visualization, security cards, and JSON envelopes.
+//
+// Setup: Demands capability structures and theme rendering primitives.
+//
+// Beats:
+//   1. Expose terminal color cards and formatting functions.
+//   2. Expose structured JSON encoders for capability audits and decoded sets.
+//   3. Provide render subsystem health verification predicate.
+
+import "core/cap_proc.oo";
+import "core/cap_audit.oo";
+import "render/cap_theme.oo";
+
+pub fn verify_render_subsystem() -> Bool {
+    let p: ProcessCaps = make_empty_caps("123");
+    let audit: CapAuditReport = audit_process_caps(p);
+    let card: String = render_caps_terminal(p, audit);
+    let json: String = render_caps_json(p, audit);
+    return chars_len(card) > 0 && chars_len(json) > 0;
+}

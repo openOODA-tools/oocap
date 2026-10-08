@@ -1,13 +1,21 @@
-// # oocap Root Anchor
+// # oocap Root Architecture Anchor
 //
-// Logline: Top-level anchor re-exporting options, core logic, render, and ipc subsystems.
+// Logline: Unified architecture anchor binding capability inspection, renderers, and IPC servers.
 //
-// Setup: Pure shim re-exporting all oocap subsystem anchors.
+// Setup: Demands subsystem health check functions across all architectural tiers.
 //
 // Beats:
-//   1. Re-export options parsing subsystem.
-//   2. Re-export core oocap execution engine.
-//   3. Re-export render formatting subsystem.
-//   4. Re-export Model Context Protocol (MCP) IPC subsystem.
+//   1. Import module anchors from core, render, and ipc subdirectories.
+//   2. Validate integrity of all subsystems under a single testable entry.
+//   3. Export root diagnostic assertion helper for test suites.
 
-import "main.oo";
+import "core/anchor.oo";
+import "render/anchor.oo";
+import "ipc/anchor.oo";
+
+pub fn verify_all_subsystems(fs: &FsReadCap) -> Bool {
+    let core_ok: Bool = verify_core_subsystem();
+    let render_ok: Bool = verify_render_subsystem();
+    let ipc_ok: Bool = verify_ipc_subsystem(fs);
+    return core_ok && render_ok && ipc_ok;
+}

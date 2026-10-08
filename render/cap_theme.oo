@@ -1,0 +1,114 @@
+// # Linux Capabilities Visual Theme and JSON Serialization
+//
+// Logline: Formats capability inspection tables, security audit cards, and JSON envelopes.
+//
+// Setup: Bridges oote terminal palettes and structured JSON for humans and agents.
+//
+// Beats:
+//   1. Define ANSI styling tokens and header borders.
+//   2. Render human-readable process capability inspection cards.
+//   3. Render structured JSON representations of process capabilities and audits.
+//   4. Render decoded/encoded capability JSON responses.
+
+import "core/cap_proc.oo";
+import "core/cap_audit.oo";
+import "core/cap_mask.oo";
+
+pub fn render_ansi_header() -> String {
+    let bold: String = "\u001b[1m";
+    let cyan: String = "\u001b[38;5;51m";
+    let reset: String = "\u001b[0m";
+    return cyan + bold + "=== oocap: Sovereign LINUX CAPABILITIES ===" + reset + "\n";
+}
+
+pub fn render_caps_terminal(p: ProcessCaps, audit: CapAuditReport) -> String {
+    let bold: String = "\u001b[1m";
+    let green: String = "\u001b[38;5;82m";
+    let yellow: String = "\u001b[38;5;220m";
+    let red: String = "\u001b[38;5;196m";
+    let dim: String = "\u001b[38;5;242m";
+    let reset: String = "\u001b[0m";
+
+    let mut out: String = render_ansi_header();
+    out = out + dim + "----------------------------------------" + reset + "\n";
+    out = out + bold + "Target Process:   " + reset + p.pid + "\n";
+    out = out + bold + "Inheritable (Inh):" + reset + " " + p.cap_inh + "\n";
+    out = out + bold + "Permitted   (Prm):" + reset + " " + p.cap_prm + "\n";
+    out = out + bold + "Effective   (Eff):" + reset + " " + p.cap_eff + " (" + to_string(audit.total_effective) + " active)\n";
+    out = out + bold + "Bounding    (Bnd):" + reset + " " + p.cap_bnd + " (" + to_string(audit.total_bounding) + " bounded)\n";
+    out = out + bold + "Ambient     (Amb):" + reset + " " + p.cap_amb + "\n";
+    out = out + dim + "----------------------------------------" + reset + "\n";
+
+    let mut posture_color: String = green;
+    if audit.security_posture == "HIGH_RISK" {
+        posture_color = red;
+    } else if audit.security_posture == "RESTRICTED" {
+        posture_color = yellow;
+    }
+
+    out = out + bold + "Security Posture: " + reset + posture_color + audit.security_posture + reset + "\n";
+    out = out + bold + "Recommendation:   " + reset + audit.recommendation + "\n";
+
+    if audit.dangerous_count > 0 {
+        out = out + red + bold + "Flagged Caps:     " + reset;
+        let mut d: Int = 0;
+        while d < audit.dangerous_count {
+            if d > 0 { out = out + ", "; }
+            out = out + list_get(audit.dangerous_names, d);
+            d = d + 1;
+        }
+        out = out + "\n";
+    }
+
+    return out;
+}
+
+pub fn render_caps_json(p: ProcessCaps, audit: CapAuditReport) -> String {
+    let eff_names: List[String] = decode_mask_to_names(p.cap_eff);
+    let mut names_json: String = "[";
+    let n_len: Int = list_len(eff_names);
+    let mut i: Int = 0;
+    while i < n_len {
+        if i > 0 { names_json = names_json + ","; }
+        names_json = names_json + "\"" + list_get(eff_names, i) + "\"";
+        i = i + 1;
+    }
+    names_json = names_json + "]";
+
+    return "{\"status\":\"ok\",\"tool\":\"oocap\","
+        + "\"pid\":\"" + p.pid + "\","
+        + "\"cap_inh\":\"" + p.cap_inh + "\","
+        + "\"cap_prm\":\"" + p.cap_prm + "\","
+        + "\"cap_eff\":\"" + p.cap_eff + "\","
+        + "\"cap_bnd\":\"" + p.cap_bnd + "\","
+        + "\"cap_amb\":\"" + p.cap_amb + "\","
+        + "\"effective_count\":" + to_string(audit.total_effective) + ","
+        + "\"bounding_count\":" + to_string(audit.total_bounding) + ","
+        + "\"dangerous_count\":" + to_string(audit.dangerous_count) + ","
+        + "\"effective_names\":" + names_json + ","
+        + "\"posture\":\"" + audit.security_posture + "\","
+        + "\"recommendation\":\"" + audit.recommendation + "\"}\n";
+}
+
+pub fn render_decode_json(hex_str: String, names: List[String]) -> String {
+    let mut names_json: String = "[";
+    let n_len: Int = list_len(names);
+    let mut i: Int = 0;
+    while i < n_len {
+        if i > 0 { names_json = names_json + ","; }
+        names_json = names_json + "\"" + list_get(names, i) + "\"";
+        i = i + 1;
+    }
+    names_json = names_json + "]";
+
+    return "{\"status\":\"ok\",\"tool\":\"oocap\","
+        + "\"mask\":\"" + hex_str + "\","
+        + "\"count\":" + to_string(n_len) + ","
+        + "\"capabilities\":" + names_json + "}\n";
+}
+
+pub fn render_encode_json(names_str: String, hex_str: String) -> String {
+    return "{\"status\":\"ok\",\"tool\":\"oocap\","
+        + "\"input\":\"" + names_str + "\","
+        + "\"mask\":\"" + hex_str + "\"}\n";
+}

@@ -1,0 +1,26 @@
+// # oocap Core Module Anchor
+//
+// Logline: Integrates Linux capability definitions, bitmask operations, proc parser, and audit.
+//
+// Setup: Bridges kernel capability registries and systemd drop-in generators for consumers.
+//
+// Beats:
+//   1. Expose capability definitions and bitmask encoding routines.
+//   2. Expose proc parser and security audit routines.
+//   3. Provide core subsystem health verification predicate.
+
+import "core/cap_defs.oo";
+import "core/cap_mask.oo";
+import "core/cap_proc.oo";
+import "core/cap_audit.oo";
+import "core/cap_systemd.oo";
+
+pub fn verify_core_subsystem() -> Bool {
+    let name: String = cap_name_by_index(10);
+    let mut indices: List[Int] = list_new();
+    indices = list_push(indices, 10);
+    let mask: String = encode_indices_to_mask(indices);
+    let ok_bit: Bool = mask_test_bit(mask, 10);
+    let conf: String = generate_systemd_conf(decode_mask_to_names(mask), false);
+    return (name == "CAP_NET_BIND_SERVICE") && ok_bit && (chars_len(conf) > 0);
+}

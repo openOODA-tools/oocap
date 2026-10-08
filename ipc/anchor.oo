@@ -1,0 +1,21 @@
+// # oocap IPC Module Anchor
+//
+// Logline: Integrates command-line options parser and Model Context Protocol stdio server.
+//
+// Setup: Bridges IPC routing and JSON-RPC dispatch to Linux capability engine.
+//
+// Beats:
+//   1. Expose CLI argument parser and execution options.
+//   2. Expose MCP tool dispatch and streaming message router.
+//   3. Provide IPC subsystem health verification predicate.
+
+import "ipc/json_field.oo";
+import "ipc/cap_opts.oo";
+import "ipc/mcp_serve.oo";
+
+pub fn verify_ipc_subsystem(fs: &FsReadCap) -> Bool {
+    let raw: String = "{\"method\":\"initialize\",\"id\":1}";
+    let resp: String = handle_mcp_line(fs, raw);
+    let opts: CapOpts = default_cap_opts();
+    return chars_len(resp) > 0 && opts.pid == "self";
+}

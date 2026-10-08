@@ -1,52 +1,131 @@
 // # oocap Main Entry Point
 //
-// Logline: Inspects, drops, and verifies Linux thread capability bounding sets (CAP_NET_BIND).
+// Logline: Inspects, drops, and verifies Linux thread capability bounding sets.
 //
 // Setup: Demands explicit capability tokens and standard argument list.
 //
 // Beats:
 //   1. Parse command-line options and dispatch --help, --version, or --mcp.
-//   2. Execute capability-bounded oocap operations.
-//   3. Format and output structured results to standard output.
+//   2. Ingest capability masks from /proc/[pid]/status or direct arguments.
+//   3. Execute capability inspection, decoding, encoding, or audit routines.
+//   4. Format and output results to standard output.
+
+import "core/cap_defs.oo";
+import "core/cap_mask.oo";
+import "core/cap_proc.oo";
+import "core/cap_audit.oo";
+import "core/cap_systemd.oo";
+import "render/cap_theme.oo";
+import "ipc/cap_opts.oo";
+import "ipc/mcp_serve.oo";
 
 fn render_help() -> String {
-    return "oocap 0.1.0 (openOODA sovereign agent & security)\n"
-        + "usage: oocap [options] [ARGUMENTS]...\n\n"
-        + "Inspects, drops, and verifies Linux thread capability bounding sets (CAP_NET_BIND).\n\n"
+    return "oocap 0.2.0 (openOODA sovereign linux capabilities)\n"
+        + "usage: oocap [options] [PID_OR_MASK]\n\n"
+        + "Inspects, drops, and verifies Linux thread capability bounding sets.\n\n"
         + "Options:\n"
-        + "  -h, --help           display this help and exit\n"
-        + "  -v, --version        output version information and exit\n"
-        + "      --json           output formatted as JSON Lines\n"
-        + "      --color <WHEN>   colorize output: auto, always, never [default: auto]\n"
-        + "      --theme <NAME>   override active oote palette\n"
-        + "      --mcp            run as Model Context Protocol stdio server\n";
+        + "  -p, --pid <PID>         inspect capabilities of process PID [default: self]\n"
+        + "  -i, --inspect           inspect all capability sets for target process\n"
+        + "  -a, --audit             audit process capabilities against negative-trust policy\n"
+        + "      --decode <HEX>      decode 64-bit hexadecimal mask to capability names\n"
+        + "      --encode <CAPS>     encode comma-separated capability names to hex mask\n"
+        + "      --drop <CAPS>       calculate bounding set mask after dropping capabilities\n"
+        + "      --systemd           generate systemd [Service] capability drop-in snippet\n"
+        + "      --ambient           include AmbientCapabilities in systemd drop-in\n"
+        + "      --json              output formatted as structured JSON\n"
+        + "      --mcp               run as Model Context Protocol stdio server\n"
+        + "  -h, --help              display this help and exit\n"
+        + "  -v, --version           output version information and exit\n";
 }
 
-fn render_version() -> String {
-    return "oocap 0.1.0 (openOODA sovereign agent & security)\n";
-}
+pub fn main(
+    fs: &FsReadCap,
+    proc_cap: &ProcessCap,
+    env: &EnvCap,
+    args: List[String]
+) -> Result[Int, String] {
+    let opt: CapOpts = parse_cap_opts(args);
 
-fn main(args: List[String]) -> Int {
-    let num_args: Int = list_len(args);
-    let mut i: Int = 0;
-
-    while i < num_args {
-        let arg: String = list_get(args, i);
-        if arg == "-h" || arg == "--help" {
-            print(render_help());
-            return 0;
-        }
-        if arg == "-v" || arg == "--version" {
-            print(render_version());
-            return 0;
-        }
-        if arg == "--mcp" {
-            print("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"ready\",\"tool\":\"oocap\"}}\n");
-            return 0;
-        }
-        i = i + 1;
+    if opt.help_mode {
+        print(render_help());
+        return Ok(0);
+    }
+    if opt.version_mode {
+        print("oocap 0.2.0 (openOODA sovereign linux capabilities)\n");
+        return Ok(0);
+    }
+    if opt.mcp_mode {
+        run_mcp_server(fs);
+        return Ok(0);
     }
 
-    print("oocap: sovereign capability-bounded utility ready\n");
-    return 0;
+    if opt.action == "decode" {
+        let names: List[String] = decode_mask_to_names(opt.hex_mask);
+        if opt.json_mode {
+            print(render_decode_json(opt.hex_mask, names));
+        } else {
+            let n_len: Int = list_len(names);
+            print("Decoded Capabilities (" + to_string(n_len) + "):\n");
+            let mut i: Int = 0;
+            while i < n_len {
+                print("  - " + list_get(names, i) + "\n");
+                i = i + 1;
+            }
+        }
+        return Ok(0);
+    }
+
+    if opt.action == "encode" {
+        let mut indices: List[Int] = list_new();
+        let n_len: Int = list_len(opt.cap_names);
+        let mut i: Int = 0;
+        let mut raw_input: String = "";
+        while i < n_len {
+            let name: String = list_get(opt.cap_names, i);
+            if i > 0 { raw_input = raw_input + ","; }
+            raw_input = raw_input + name;
+            let idx: Int = cap_index_by_name(name);
+            if idx >= 0 {
+                indices = list_push(indices, idx);
+            }
+            i = i + 1;
+        }
+        let mask: String = encode_indices_to_mask(indices);
+        if opt.json_mode {
+            print(render_encode_json(raw_input, mask));
+        } else {
+            print(mask + "\n");
+        }
+        return Ok(0);
+    }
+
+    if opt.action == "systemd" {
+        let conf: String = generate_systemd_conf(opt.cap_names, opt.ambient);
+        print(conf);
+        return Ok(0);
+    }
+
+    if opt.action == "drop" {
+        let p: ProcessCaps = read_process_status(fs, opt.pid);
+        let dropped_mask: String = drop_caps_from_mask(p.cap_bnd, opt.cap_names);
+        if opt.json_mode {
+            let names: List[String] = decode_mask_to_names(dropped_mask);
+            print(render_decode_json(dropped_mask, names));
+        } else {
+            print("Original Bounding Set: " + p.cap_bnd + "\n");
+            print("Reduced Bounding Set:  " + dropped_mask + "\n");
+        }
+        return Ok(0);
+    }
+
+    let p: ProcessCaps = read_process_status(fs, opt.pid);
+    let audit: CapAuditReport = audit_process_caps(p);
+
+    if opt.json_mode {
+        print(render_caps_json(p, audit));
+    } else {
+        print(render_caps_terminal(p, audit));
+    }
+
+    return Ok(0);
 }

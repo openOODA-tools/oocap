@@ -1,5 +1,5 @@
 Name:           oocap
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        Inspects, drops, and verifies Linux thread capability bounding sets (CAP_NET_BIND).
 License:        ASL 2.0

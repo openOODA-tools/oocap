@@ -1,0 +1,88 @@
+// # Linux Capabilities Definitions and Risk Registry
+//
+// Logline: Canonical Linux capability table mapping capability indices, names, and risk ratings.
+//
+// Setup: Demands integer index identifiers and standard kernel capability string tokens.
+//
+// Beats:
+//   1. Resolve Linux capability index (0..40) to standard kernel name.
+//   2. Resolve capability name to bit index.
+//   3. Classify capability risk level (high, medium, standard).
+//   4. Provide descriptive capability purpose summary.
+
+pub fn cap_name_by_index(idx: Int) -> String {
+    if idx == 0 { return "CAP_CHOWN"; }
+    if idx == 1 { return "CAP_DAC_OVERRIDE"; }
+    if idx == 2 { return "CAP_DAC_READ_SEARCH"; }
+    if idx == 3 { return "CAP_FOWNER"; }
+    if idx == 4 { return "CAP_FSETID"; }
+    if idx == 5 { return "CAP_KILL"; }
+    if idx == 6 { return "CAP_SETGID"; }
+    if idx == 7 { return "CAP_SETUID"; }
+    if idx == 8 { return "CAP_SETPCAP"; }
+    if idx == 9 { return "CAP_LINUX_IMMUTABLE"; }
+    if idx == 10 { return "CAP_NET_BIND_SERVICE"; }
+    if idx == 11 { return "CAP_NET_BROADCAST"; }
+    if idx == 12 { return "CAP_NET_ADMIN"; }
+    if idx == 13 { return "CAP_NET_RAW"; }
+    if idx == 14 { return "CAP_IPC_LOCK"; }
+    if idx == 15 { return "CAP_IPC_OWNER"; }
+    if idx == 16 { return "CAP_SYS_MODULE"; }
+    if idx == 17 { return "CAP_SYS_RAWIO"; }
+    if idx == 18 { return "CAP_SYS_CHROOT"; }
+    if idx == 19 { return "CAP_SYS_PTRACE"; }
+    if idx == 20 { return "CAP_SYS_PACCT"; }
+    if idx == 21 { return "CAP_SYS_ADMIN"; }
+    if idx == 22 { return "CAP_SYS_BOOT"; }
+    if idx == 23 { return "CAP_SYS_NICE"; }
+    if idx == 24 { return "CAP_SYS_RESOURCE"; }
+    if idx == 25 { return "CAP_SYS_TIME"; }
+    if idx == 26 { return "CAP_SYS_TTY_CONFIG"; }
+    if idx == 27 { return "CAP_MKNOD"; }
+    if idx == 28 { return "CAP_LEASE"; }
+    if idx == 29 { return "CAP_AUDIT_WRITE"; }
+    if idx == 30 { return "CAP_AUDIT_CONTROL"; }
+    if idx == 31 { return "CAP_SETFCAP"; }
+    if idx == 32 { return "CAP_MAC_OVERRIDE"; }
+    if idx == 33 { return "CAP_MAC_ADMIN"; }
+    if idx == 34 { return "CAP_SYSLOG"; }
+    if idx == 35 { return "CAP_WAKE_ALARM"; }
+    if idx == 36 { return "CAP_BLOCK_SUSPEND"; }
+    if idx == 37 { return "CAP_AUDIT_READ"; }
+    if idx == 38 { return "CAP_PERFMON"; }
+    if idx == 39 { return "CAP_BPF"; }
+    if idx == 40 { return "CAP_CHECKPOINT_RESTORE"; }
+    return "UNKNOWN";
+}
+
+pub fn cap_index_by_name(name: String) -> Int {
+    let mut i: Int = 0;
+    while i <= 40 {
+        if cap_name_by_index(i) == name {
+            return i;
+        }
+        i = i + 1;
+    }
+    return -1;
+}
+
+pub fn cap_is_dangerous(idx: Int) -> Bool {
+    if idx == 1 { return true; }   // CAP_DAC_OVERRIDE
+    if idx == 2 { return true; }   // CAP_DAC_READ_SEARCH
+    if idx == 6 { return true; }   // CAP_SETGID
+    if idx == 7 { return true; }   // CAP_SETUID
+    if idx == 8 { return true; }   // CAP_SETPCAP
+    if idx == 12 { return true; }  // CAP_NET_ADMIN
+    if idx == 13 { return true; }  // CAP_NET_RAW
+    if idx == 16 { return true; }  // CAP_SYS_MODULE
+    if idx == 17 { return true; }  // CAP_SYS_RAWIO
+    if idx == 19 { return true; }  // CAP_SYS_PTRACE
+    if idx == 21 { return true; }  // CAP_SYS_ADMIN
+    if idx == 31 { return true; }  // CAP_SETFCAP
+    if idx == 39 { return true; }  // CAP_BPF
+    return false;
+}
+
+pub fn cap_count() -> Int {
+    return 41;
+}

@@ -1,0 +1,100 @@
+// # Linux /proc Process Capability Parser
+//
+// Logline: Extracts Inheritable, Permitted, Effective, Bounding, and Ambient capability masks.
+//
+// Setup: Demands capability-bounded file read token for /proc filesystem inspection.
+//
+// Beats:
+//   1. Declare ProcessCaps data structure.
+//   2. Parse status file contents line-by-line for Cap* prefixes.
+//   3. Extract hexadecimal mask values.
+//   4. Ingest and parse /proc/[pid]/status using FsReadCap.
+
+pub type ProcessCaps = struct {
+    pid: String,
+    cap_inh: String,
+    cap_prm: String,
+    cap_eff: String,
+    cap_bnd: String,
+    cap_amb: String,
+    valid: Bool
+};
+
+pub fn make_empty_caps(pid: String) -> ProcessCaps {
+    return ProcessCaps {
+        pid: pid,
+        cap_inh: "0000000000000000",
+        cap_prm: "0000000000000000",
+        cap_eff: "0000000000000000",
+        cap_bnd: "0000000000000000",
+        cap_amb: "0000000000000000",
+        valid: false
+    };
+}
+
+pub fn extract_field_val(line: String) -> String {
+    let len: Int = chars_len(line);
+    let mut i: Int = 0;
+    while i < len {
+        let ch: String = str_slice(line, i, i + 1);
+        if ch == ":" {
+            let rest: String = str_slice(line, i + 1, len);
+            return str_trim(rest);
+        }
+        i = i + 1;
+    }
+    return "";
+}
+
+pub fn parse_status_content(pid: String, content: String) -> ProcessCaps {
+    let mut caps: ProcessCaps = make_empty_caps(pid);
+    let len: Int = chars_len(content);
+    let mut line_start: Int = 0;
+    let mut i: Int = 0;
+    let mut found_any: Bool = false;
+
+    while i <= len {
+        if i == len || str_slice(content, i, i + 1) == "\n" {
+            let line: String = str_slice(content, line_start, i);
+            let trimmed: String = str_trim(line);
+
+            if str_starts_with(trimmed, "CapInh:") {
+                caps.cap_inh = extract_field_val(trimmed);
+                found_any = true;
+            } else if str_starts_with(trimmed, "CapPrm:") {
+                caps.cap_prm = extract_field_val(trimmed);
+                found_any = true;
+            } else if str_starts_with(trimmed, "CapEff:") {
+                caps.cap_eff = extract_field_val(trimmed);
+                found_any = true;
+            } else if str_starts_with(trimmed, "CapBnd:") {
+                caps.cap_bnd = extract_field_val(trimmed);
+                found_any = true;
+            } else if str_starts_with(trimmed, "CapAmb:") {
+                caps.cap_amb = extract_field_val(trimmed);
+                found_any = true;
+            }
+
+            line_start = i + 1;
+        }
+        i = i + 1;
+    }
+
+    caps.valid = found_any;
+    return caps;
+}
+
+pub fn read_process_status(fs: &FsReadCap, pid: String) -> ProcessCaps {
+    let mut path: String = "/proc/self/status";
+    if chars_len(pid) > 0 && pid != "self" {
+        path = "/proc/" + pid + "/status";
+    }
+
+    let res: Result[String, String] = read_file(fs, path);
+    if res.is_ok() {
+        let content: String = match res { Ok(s) => s, Err(_) => "" };
+        return parse_status_content(pid, content);
+    }
+
+    return make_empty_caps(pid);
+}

@@ -1,0 +1,110 @@
+// # oocap Command-Line Options Parser
+//
+// Logline: Command-line flag tokenizer and configuration builder for Linux capability actions.
+//
+// Setup: Parses arguments vector into structured execution parameters.
+//
+// Beats:
+//   1. Declare CapOpts structure with action, PID, and formatting flags.
+//   2. Parse comma-separated capability argument lists.
+//   3. Iterate command arguments and assign operation modes.
+//   4. Provide default inspection parameters.
+
+pub type CapOpts = struct {
+    action: String,
+    pid: String,
+    hex_mask: String,
+    cap_names: List[String],
+    ambient: Bool,
+    json_mode: Bool,
+    mcp_mode: Bool,
+    help_mode: Bool,
+    version_mode: Bool
+};
+
+pub fn default_cap_opts() -> CapOpts {
+    return CapOpts {
+        action: "inspect",
+        pid: "self",
+        hex_mask: "",
+        cap_names: list_new(),
+        ambient: false,
+        json_mode: false,
+        mcp_mode: false,
+        help_mode: false,
+        version_mode: false
+    };
+}
+
+pub fn split_commas(s: String) -> List[String] {
+    let mut out: List[String] = list_new();
+    let len: Int = chars_len(s);
+    let mut start: Int = 0;
+    let mut i: Int = 0;
+    while i <= len {
+        if i == len || str_slice(s, i, i + 1) == "," {
+            let item: String = str_trim(str_slice(s, start, i));
+            if chars_len(item) > 0 {
+                out = list_push(out, item);
+            }
+            start = i + 1;
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn parse_cap_opts(args: List[String]) -> CapOpts {
+    let mut opts: CapOpts = default_cap_opts();
+    let num_args: Int = list_len(args);
+    let mut i: Int = 0;
+
+    while i < num_args {
+        let arg: String = list_get(args, i);
+        if arg == "-h" || arg == "--help" {
+            opts.help_mode = true;
+        } else if arg == "-v" || arg == "--version" {
+            opts.version_mode = true;
+        } else if arg == "--mcp" {
+            opts.mcp_mode = true;
+        } else if arg == "--json" {
+            opts.json_mode = true;
+        } else if arg == "-i" || arg == "--inspect" {
+            opts.action = "inspect";
+        } else if arg == "-a" || arg == "--audit" {
+            opts.action = "audit";
+        } else if arg == "--systemd" {
+            opts.action = "systemd";
+        } else if arg == "--ambient" {
+            opts.ambient = true;
+        } else if (arg == "-p" || arg == "--pid") && (i + 1 < num_args) {
+            i = i + 1;
+            opts.pid = list_get(args, i);
+        } else if arg == "--decode" && (i + 1 < num_args) {
+            i = i + 1;
+            opts.action = "decode";
+            opts.hex_mask = list_get(args, i);
+        } else if arg == "--encode" && (i + 1 < num_args) {
+            i = i + 1;
+            opts.action = "encode";
+            opts.cap_names = split_commas(list_get(args, i));
+        } else if arg == "--drop" && (i + 1 < num_args) {
+            i = i + 1;
+            opts.action = "drop";
+            opts.cap_names = split_commas(list_get(args, i));
+        } else if !str_starts_with(arg, "-") {
+            if opts.action == "systemd" || str_starts_with(arg, "CAP_") {
+                opts.cap_names = split_commas(arg);
+                opts.action = "systemd";
+            } else if chars_len(arg) == 16 {
+                opts.hex_mask = arg;
+                opts.action = "decode";
+            } else {
+                opts.pid = arg;
+            }
+        }
+        i = i + 1;
+    }
+
+    return opts;
+}

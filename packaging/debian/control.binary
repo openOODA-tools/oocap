@@ -1,0 +1,11 @@
+Package: oocap
+Version: 0.2.0-1
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: openOODA-tools <ops@openooda.org>
+Depends: libc6
+Description: Sovereign LINUX CAPABILITIES
+ Inspects, drops, and verifies Linux thread capability bounding sets.
+ Pure openOODA implementation with zero ambient authority, dual POSIX CLI,
+ and Model Context Protocol (MCP) streaming server.

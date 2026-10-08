@@ -1,7 +1,7 @@
 # Maintainer: openOODA-tools <ops@openooda.org>
 pkgname=oocap-bin
 _pkgname=oocap
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Inspects, drops, and verifies Linux thread capability bounding sets (CAP_NET_BIND)."
 arch=('x86_64')

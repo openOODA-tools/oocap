@@ -1,0 +1,115 @@
+// # Linux Capability Bitmask Codec
+//
+// Logline: Converts 64-bit capability bitmasks between hex strings and capability lists.
+//
+// Setup: Implements nibble-vector bitwise arithmetic supporting up to 64 kernel capabilities.
+//
+// Beats:
+//   1. Parse hex digit into 4-bit integer.
+//   2. Test if specific capability bit index is set in hex mask.
+//   3. Decode 16-character hex bitmask into list of capability names.
+//   4. Encode list of capability indices into canonical 16-hex-digit mask.
+
+import "core/cap_defs.oo";
+
+pub fn hex_to_nibble(ch: String) -> Int {
+    if ch == "0" { return 0; }
+    if ch == "1" { return 1; }
+    if ch == "2" { return 2; }
+    if ch == "3" { return 3; }
+    if ch == "4" { return 4; }
+    if ch == "5" { return 5; }
+    if ch == "6" { return 6; }
+    if ch == "7" { return 7; }
+    if ch == "8" { return 8; }
+    if ch == "9" { return 9; }
+    if ch == "a" || ch == "A" { return 10; }
+    if ch == "b" || ch == "B" { return 11; }
+    if ch == "c" || ch == "C" { return 12; }
+    if ch == "d" || ch == "D" { return 13; }
+    if ch == "e" || ch == "E" { return 14; }
+    if ch == "f" || ch == "F" { return 15; }
+    return 0;
+}
+
+pub fn nibble_to_hex(n: Int) -> String {
+    let v: Int = n & 15;
+    let hex: String = "0123456789abcdef";
+    return str_slice(hex, v, v + 1);
+}
+
+pub fn mask_test_bit(hex_str: String, bit_idx: Int) -> Bool {
+    let len: Int = chars_len(hex_str);
+    if len <= 0 || bit_idx < 0 || bit_idx >= 64 {
+        return false;
+    }
+    let nibble_from_right: Int = bit_idx / 4;
+    let bit_in_nibble: Int = bit_idx % 4;
+
+    if nibble_from_right >= len {
+        return false;
+    }
+
+    let char_idx: Int = len - 1 - nibble_from_right;
+    let ch: String = str_slice(hex_str, char_idx, char_idx + 1);
+    let nibble: Int = hex_to_nibble(ch);
+
+    let mut mask: Int = 1;
+    let mut b: Int = 0;
+    while b < bit_in_nibble {
+        mask = mask * 2;
+        b = b + 1;
+    }
+
+    return (nibble & mask) != 0;
+}
+
+pub fn decode_mask_to_names(hex_str: String) -> List[String] {
+    let mut names: List[String] = list_new();
+    let total: Int = cap_count();
+    let mut i: Int = 0;
+    while i < total {
+        if mask_test_bit(hex_str, i) {
+            names = list_push(names, cap_name_by_index(i));
+        }
+        i = i + 1;
+    }
+    return names;
+}
+
+pub fn encode_indices_to_mask(indices: List[Int]) -> String {
+    let mut nibbles: List[Int] = list_new();
+    let mut n: Int = 0;
+    while n < 16 {
+        nibbles = list_push(nibbles, 0);
+        n = n + 1;
+    }
+
+    let count: Int = list_len(indices);
+    let mut i: Int = 0;
+    while i < count {
+        let bit_idx: Int = list_get(indices, i);
+        if bit_idx >= 0 && bit_idx < 64 {
+            let nibble_idx: Int = bit_idx / 4;
+            let bit_in_nibble: Int = bit_idx % 4;
+            let mut bit_val: Int = 1;
+            let mut b: Int = 0;
+            while b < bit_in_nibble {
+                bit_val = bit_val * 2;
+                b = b + 1;
+            }
+            let curr: Int = list_get(nibbles, nibble_idx);
+            nibbles = list_set(nibbles, nibble_idx, curr | bit_val);
+        }
+        i = i + 1;
+    }
+
+    let mut out: String = "";
+    let mut pos: Int = 15;
+    while pos >= 0 {
+        let val: Int = list_get(nibbles, pos);
+        out = out + nibble_to_hex(val);
+        pos = pos - 1;
+    }
+    return out;
+}

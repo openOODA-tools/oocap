@@ -54,17 +54,23 @@ oocap-uninstall
 ## 2. CLI Usage
 
 ```
-usage: oocap [options] [ARGUMENTS]...
+usage: oocap [options] [PID_OR_MASK]
 
-Inspects, drops, and verifies Linux thread capability bounding sets (CAP_NET_BIND).
+Inspects, drops, and verifies Linux thread capability bounding sets.
 
 Options:
-  -h, --help           display this help and exit
-  -v, --version        output version information and exit
-      --json           output formatted as JSON Lines
-      --color <WHEN>   colorize output: auto, always, never [default: auto]
-      --theme <NAME>   override active oote palette
-      --mcp            run as Model Context Protocol stdio server
+  -p, --pid <PID>         inspect capabilities of process PID [default: self]
+  -i, --inspect           inspect all capability sets for target process
+  -a, --audit             audit process capabilities against negative-trust policy
+      --decode <HEX>      decode 64-bit hexadecimal mask to capability names
+      --encode <CAPS>     encode comma-separated capability names to hex mask
+      --drop <CAPS>       calculate bounding set mask after dropping capabilities
+      --systemd           generate systemd [Service] capability drop-in snippet
+      --ambient           include AmbientCapabilities in systemd drop-in
+      --json              output formatted as structured JSON
+      --mcp               run as Model Context Protocol stdio server
+  -h, --help              display this help and exit
+  -v, --version           output version information and exit
 ```
 
 ---
@@ -80,6 +86,12 @@ Options:
 ## 4. Model Context Protocol (MCP)
 
 When invoked with `--mcp`, `oocap` runs a JSON-RPC 2.0 stdio server providing structured tools for AI coding agents:
+
+* `cap_inspect`: Inspect process capability sets (`CapInh`, `CapPrm`, `CapEff`, `CapBnd`, `CapAmb`) from `/proc/[pid]/status`.
+* `cap_decode`: Decode 64-bit hexadecimal bitmask into Linux capability names.
+* `cap_encode`: Encode capability names into canonical 16-hex-digit bitmask.
+* `cap_audit`: Audit capability sets against privilege escalation and container escape risks.
+* `cap_systemd`: Generate declarative systemd capability drop-in service configuration.
 
 ```bash
 oocap --mcp

@@ -1,0 +1,165 @@
+// # oocap Model Context Protocol (MCP) Server
+//
+// Logline: JSON-RPC 2.0 stdio server providing Linux capability inspection and auditing tools.
+//
+// Setup: Zero-leakage capability-bounded request router over standard input/output.
+//
+// Beats:
+//   1. Handle MCP initialize and protocol version negotiation.
+//   2. Advertise cap_inspect, cap_decode, cap_encode, cap_audit, and cap_systemd tools.
+//   3. Dispatch tools/call requests and format JSON-RPC responses.
+//   4. Process streaming stdio request loop.
+
+import "core/cap_defs.oo";
+import "core/cap_mask.oo";
+import "core/cap_proc.oo";
+import "core/cap_audit.oo";
+import "core/cap_systemd.oo";
+import "ipc/json_field.oo";
+import "ipc/cap_opts.oo";
+
+pub fn mcp_tools_list(id_val: String) -> String {
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + id_val + ",\"result\":{\"tools\":["
+        + "{\"name\":\"cap_inspect\",\"description\":\"Inspect process capability sets (/proc/[pid]/status).\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"pid\":{\"type\":\"string\"}}}},"
+        + "{\"name\":\"cap_decode\",\"description\":\"Decode 64-bit hexadecimal mask into Linux capability names.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"mask\":{\"type\":\"string\"}},\"required\":[\"mask\"]}},"
+        + "{\"name\":\"cap_encode\",\"description\":\"Encode capability names into 16-hex-digit bitmask.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"capabilities\":{\"type\":\"string\"}},\"required\":[\"capabilities\"]}},"
+        + "{\"name\":\"cap_audit\",\"description\":\"Audit capability sets against privilege escalation risks.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"pid\":{\"type\":\"string\"}}}},"
+        + "{\"name\":\"cap_systemd\",\"description\":\"Generate declarative systemd capability drop-in configuration.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"capabilities\":{\"type\":\"string\"},\"ambient\":{\"type\":\"boolean\"}},\"required\":[\"capabilities\"]}}"
+        + "]}}\n";
+}
+
+pub fn handle_inspect(fs: &FsReadCap, id_val: String, args: String) -> String {
+    let mut pid: String = json_get_string(args, "pid");
+    if chars_len(pid) == 0 { pid = "self"; }
+
+    let p: ProcessCaps = read_process_status(fs, pid);
+    let audit: CapAuditReport = audit_process_caps(p);
+
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + id_val + ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\""
+        + "PID: " + p.pid + "\\n"
+        + "CapInh: " + p.cap_inh + "\\n"
+        + "CapPrm: " + p.cap_prm + "\\n"
+        + "CapEff: " + p.cap_eff + "\\n"
+        + "CapBnd: " + p.cap_bnd + "\\n"
+        + "CapAmb: " + p.cap_amb + "\\n"
+        + "Posture: " + audit.security_posture + "\\n"
+        + "Recommendation: " + audit.recommendation + "\""
+        + "}]}}\n";
+}
+
+pub fn handle_decode(id_val: String, args: String) -> String {
+    let mask: String = json_get_string(args, "mask");
+    let names: List[String] = decode_mask_to_names(mask);
+    let mut out: String = "Capabilities (" + to_string(list_len(names)) + "):\\n";
+    let n_len: Int = list_len(names);
+    let mut i: Int = 0;
+    while i < n_len {
+        out = out + "- " + list_get(names, i) + "\\n";
+        i = i + 1;
+    }
+
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + id_val + ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\""
+        + out + "\""
+        + "}]}}\n";
+}
+
+pub fn handle_encode(id_val: String, args: String) -> String {
+    let caps_str: String = json_get_string(args, "capabilities");
+    let names: List[String] = split_commas(caps_str);
+    let mut indices: List[Int] = list_new();
+    let n_len: Int = list_len(names);
+    let mut i: Int = 0;
+    while i < n_len {
+        let idx: Int = cap_index_by_name(list_get(names, i));
+        if idx >= 0 {
+            indices = list_push(indices, idx);
+        }
+        i = i + 1;
+    }
+    let mask: String = encode_indices_to_mask(indices);
+
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + id_val + ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\""
+        + "Mask: " + mask + "\""
+        + "}]}}\n";
+}
+
+pub fn handle_audit(fs: &FsReadCap, id_val: String, args: String) -> String {
+    let mut pid: String = json_get_string(args, "pid");
+    if chars_len(pid) == 0 { pid = "self"; }
+
+    let p: ProcessCaps = read_process_status(fs, pid);
+    let audit: CapAuditReport = audit_process_caps(p);
+
+    let mut out: String = "Posture: " + audit.security_posture + "\\n";
+    out = out + "Recommendation: " + audit.recommendation + "\\n";
+    out = out + "Effective Count: " + to_string(audit.total_effective) + "\\n";
+    out = out + "Dangerous Count: " + to_string(audit.dangerous_count) + "\\n";
+
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + id_val + ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\""
+        + out + "\""
+        + "}]}}\n";
+}
+
+pub fn handle_systemd(id_val: String, args: String) -> String {
+    let caps_str: String = json_get_string(args, "capabilities");
+    let names: List[String] = split_commas(caps_str);
+    let amb_str: String = json_get_field(args, "ambient");
+    let amb: Bool = (amb_str == "true");
+    let conf: String = generate_systemd_conf(names, amb);
+
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + id_val + ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\""
+        + json_escape_string(conf) + "\""
+        + "}]}}\n";
+}
+
+pub fn handle_mcp_line(fs: &FsReadCap, line: String) -> String {
+    let trimmed: String = str_trim(line);
+    if chars_len(trimmed) == 0 { return ""; }
+
+    let id_val: String = json_get_field(trimmed, "id");
+    let mut eff_id: String = "null";
+    if chars_len(id_val) > 0 { eff_id = id_val; }
+
+    let method: String = json_get_string(trimmed, "method");
+    if method == "initialize" {
+        return "{\"jsonrpc\":\"2.0\",\"id\":" + eff_id + ",\"result\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"oocap\",\"version\":\"0.2.0\"}}}\n";
+    }
+    if method == "tools/list" {
+        return mcp_tools_list(eff_id);
+    }
+    if method == "tools/call" {
+        let params: String = json_get_field(trimmed, "params");
+        let name: String = json_get_string(params, "name");
+        let args: String = json_get_field(params, "arguments");
+
+        if name == "cap_inspect" { return handle_inspect(fs, eff_id, args); }
+        if name == "cap_decode" { return handle_decode(eff_id, args); }
+        if name == "cap_encode" { return handle_encode(eff_id, args); }
+        if name == "cap_audit" { return handle_audit(fs, eff_id, args); }
+        if name == "cap_systemd" { return handle_systemd(eff_id, args); }
+
+        return "{\"jsonrpc\":\"2.0\",\"id\":" + eff_id + ",\"error\":{\"code\":-32601,\"message\":\"Unknown tool\"}}\n";
+    }
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + eff_id + ",\"result\":{}}\n";
+}
+
+pub fn run_mcp_server(fs: &FsReadCap) {
+    let mut running: Bool = true;
+    while running {
+        let line_res: Result[String, String] = oo_read_stdin_chunk(fs, 8192);
+        if !line_res.is_ok() {
+            running = false;
+        } else {
+            let line: String = match line_res { Ok(s) => s, Err(_) => "" };
+            let trimmed: String = str_trim(line);
+            if chars_len(trimmed) == 0 {
+                running = false;
+            } else {
+                let resp: String = handle_mcp_line(fs, trimmed);
+                if chars_len(resp) > 0 {
+                    print(resp);
+                }
+            }
+        }
+    }
+}

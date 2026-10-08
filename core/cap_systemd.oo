@@ -1,0 +1,71 @@
+// # Systemd Capability Drop-In Generator
+//
+// Logline: Generates systemd-native CapabilityBoundingSet and AmbientCapabilities service drop-ins.
+//
+// Setup: Complies with pure systemd architectural guidelines and negative-trust sandboxing.
+//
+// Beats:
+//   1. Mask out dropped capabilities from bounding sets.
+//   2. Generate declarative [Service] drop-in snippet with NoNewPrivileges.
+//   3. Configure CapabilityBoundingSet and AmbientCapabilities directives.
+//   4. Validate capability whitelist against kernel registry.
+
+import "core/cap_defs.oo";
+import "core/cap_mask.oo";
+
+pub fn drop_caps_from_mask(orig_hex: String, dropped_names: List[String]) -> String {
+    let mut remaining: List[Int] = list_new();
+    let total: Int = cap_count();
+    let mut i: Int = 0;
+
+    while i < total {
+        if mask_test_bit(orig_hex, i) {
+            let name: String = cap_name_by_index(i);
+            let mut drop_it: Bool = false;
+            let d_len: Int = list_len(dropped_names);
+            let mut d: Int = 0;
+            while d < d_len {
+                if list_get(dropped_names, d) == name {
+                    drop_it = true;
+                }
+                d = d + 1;
+            }
+            if !drop_it {
+                remaining = list_push(remaining, i);
+            }
+        }
+        i = i + 1;
+    }
+
+    return encode_indices_to_mask(remaining);
+}
+
+pub fn generate_systemd_conf(allowed_caps: List[String], ambient: Bool) -> String {
+    let mut cap_list_str: String = "";
+    let len: Int = list_len(allowed_caps);
+    let mut i: Int = 0;
+    while i < len {
+        let name: String = list_get(allowed_caps, i);
+        if cap_index_by_name(name) >= 0 {
+            if chars_len(cap_list_str) > 0 {
+                cap_list_str = cap_list_str + " ";
+            }
+            cap_list_str = cap_list_str + name;
+        }
+        i = i + 1;
+    }
+
+    if chars_len(cap_list_str) == 0 {
+        cap_list_str = "~";
+    }
+
+    let mut out: String = "# /etc/systemd/system/<unit>.service.d/50-capabilities.conf\n";
+    out = out + "# Pure systemd-native declarative capability sandboxing\n";
+    out = out + "[Service]\n";
+    out = out + "CapabilityBoundingSet=" + cap_list_str + "\n";
+    if ambient && cap_list_str != "~" {
+        out = out + "AmbientCapabilities=" + cap_list_str + "\n";
+    }
+    out = out + "NoNewPrivileges=yes\n";
+    return out;
+}

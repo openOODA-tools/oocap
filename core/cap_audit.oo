@@ -1,0 +1,66 @@
+// # Linux Capability Security Auditor
+//
+// Logline: Audits capability bitmasks against least-privilege standards and flags escalation risks.
+//
+// Setup: Demands process capability descriptors and kernel risk registry.
+//
+// Beats:
+//   1. Declare CapAuditReport data structure.
+//   2. Identify active dangerous capabilities in effective and bounding masks.
+//   3. Compute security posture rating based on active capability sets.
+//   4. Generate least-privilege hardening recommendations.
+
+import "core/cap_defs.oo";
+import "core/cap_mask.oo";
+import "core/cap_proc.oo";
+
+pub type CapAuditReport = struct {
+    total_effective: Int,
+    total_bounding: Int,
+    dangerous_count: Int,
+    dangerous_names: List[String],
+    security_posture: String,
+    recommendation: String
+};
+
+pub fn audit_process_caps(p: ProcessCaps) -> CapAuditReport {
+    let mut dangerous: List[String] = list_new();
+    let mut eff_count: Int = 0;
+    let mut bnd_count: Int = 0;
+    let total: Int = cap_count();
+    let mut i: Int = 0;
+
+    while i < total {
+        if mask_test_bit(p.cap_eff, i) {
+            eff_count = eff_count + 1;
+            if cap_is_dangerous(i) {
+                dangerous = list_push(dangerous, cap_name_by_index(i));
+            }
+        }
+        if mask_test_bit(p.cap_bnd, i) {
+            bnd_count = bnd_count + 1;
+        }
+        i = i + 1;
+    }
+
+    let d_count: Int = list_len(dangerous);
+    let mut posture: String = "RESTRICTED";
+    let mut rec: String = "Bounding set properly constrained.";
+
+    if eff_count == 0 {
+        posture = "LEAST_PRIVILEGE";
+        rec = "Process operates with zero effective kernel capabilities (Negative-Trust).";
+    } else if d_count > 0 {
+        posture = "HIGH_RISK";
+        rec = "Process possesses high-risk capabilities capable of container/namespace escape.";
+    }
+
+    return CapAuditReport {
+        total_effective: eff_count,
+        total_bounding: bnd_count,
+        dangerous_count: d_count,
+        dangerous_names: dangerous,
+        security_posture: posture,
+        recommendation: rec
+    };
+}
